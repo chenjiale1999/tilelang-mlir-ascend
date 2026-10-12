@@ -483,7 +483,7 @@ class TileLangIRTranslator(PyStmtExprVisitor):
                 f"{src_type.rank} -> {dst_type.rank}"
             )
         src_shape = list(src_type.shape)
-        dst_shape = list(dst_type.shape) 
+        dst_shape = list(dst_type.shape)
         broadcast_dims = self._infer_broadcast_dims(src_shape, dst_shape)
         self._linalg.broadcast(src, outs=[dst], dimensions=broadcast_dims)
     def _emit_vdiv(self, call: tirx.Call) -> None:
@@ -492,7 +492,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         src0 = self._get_or_create_expr_value(call.args[0])
         src1 = self._get_or_create_expr_value(call.args[1])
         dst = self._get_or_create_expr_value(call.args[2])
-        src0_type = self._ir.MemRefType(src0.type)
         src1_type = self._ir.MemRefType(src1.type)
         dst_type = self._ir.MemRefType(dst.type)
 
@@ -516,7 +515,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         src0 = self._get_or_create_expr_value(call.args[0])
         src1 = self._get_or_create_expr_value(call.args[1])
         dst = self._get_or_create_expr_value(call.args[2])
-        src0_type = self._ir.MemRefType(src0.type)
         src1_type = self._ir.MemRefType(src1.type)
         dst_type = self._ir.MemRefType(dst.type)
 
@@ -1502,7 +1500,7 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         adjust = self._arith.AndIOp(rem_nonzero, sign_mismatch).result
         adjusted = self._arith.SubIOp(quotient, one).result
         self._insert_value(op, self._arith.select(adjust, adjusted, quotient))
-        
+
     def _emit_comparison(
         self, op: tirx.PrimExpr, int_pred: str, float_pred: str
     ) -> None:
