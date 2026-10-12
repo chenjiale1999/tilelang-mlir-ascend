@@ -15,10 +15,46 @@ from typing import Optional as _Optional
 # Dialect
 # ---------------------------------------------------------------------------
 
+
 @_ods_cext.register_dialect
 class _Dialect(_ods_ir.Dialect):
     DIALECT_NAMESPACE = "tilelang"
 
+
+
+# ===========================================================================
+# tilelang.pipeline_stage
+# ===========================================================================
+
+
+@_ods_cext.register_operation(_Dialect)
+class PipelineStageOp(_ods_ir.OpView):
+    """Internal source statement boundary for OpenTileAS pipeline planning."""
+
+    OPERATION_NAME = "tilelang.pipeline_stage"
+    _ODS_REGIONS = (1, True)
+
+    def __init__(self, *, label=None, loc=None, ip=None):
+        attributes = {}
+        if label is not None:
+            attributes["label"] = _ods_ir.StringAttr.get(label)
+        super().__init__(
+            self.OPERATION_NAME,
+            self._ODS_REGIONS,
+            None,
+            None,
+            attributes=attributes,
+            results=[],
+            operands=[],
+            successors=None,
+            regions=None,
+            loc=loc,
+            ip=ip,
+        )
+
+    @property
+    def body(self):
+        return self.regions[0]
 
 # ===========================================================================
 # tilelang.copy
