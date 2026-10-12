@@ -467,20 +467,7 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         src0 = self._get_or_create_expr_value(call.args[0])
         src1 = self._get_or_create_expr_value(call.args[1])
         dst = self._get_or_create_expr_value(call.args[2])
-        src1 = self._broadcast_singleton(src1, dst)
         self._linalg.mul(src0, src1, outs=[dst])
-
-    def _broadcast_singleton(self, src: Any, dst: Any) -> Any:
-        src_type = self._ir.MemRefType(src.type)
-        dst_type = self._ir.MemRefType(dst.type)
-        if src_type.shape == dst_type.shape or self._num_elements(src_type.shape) != 1:
-            return src
-        if src_type.element_type != dst_type.element_type:
-            raise ValueError("singleton broadcast requires matching element types")
-        scalar = self._create_rank_reduced_view(src, src_type, [], src_type.element_type)
-        expanded = self._memref.AllocOp(dst_type, [], []).result
-        self._linalg.broadcast(scalar, outs=[expanded], dimensions=list(range(dst_type.rank)))
-        return expanded
 
     def _emit_broadcast(self, call: tirx.Call) -> None:
         if len(call.args) != 2:
@@ -500,13 +487,13 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         dst_shape = list(dst_type.shape)
         broadcast_dims = self._infer_broadcast_dims(src_shape, dst_shape)
         self._linalg.broadcast(src, outs=[dst], dimensions=broadcast_dims)
+
     def _emit_vdiv(self, call: tirx.Call) -> None:
         if len(call.args) != 3:
             raise ValueError(f"tl.tileop.vdiv expects 3 arguments, but received {len(call.args)}")
         src0 = self._get_or_create_expr_value(call.args[0])
         src1 = self._get_or_create_expr_value(call.args[1])
         dst = self._get_or_create_expr_value(call.args[2])
-        src1 = self._broadcast_singleton(src1, dst)
         src1_type = self._ir.MemRefType(src1.type)
         dst_type = self._ir.MemRefType(dst.type)
 
@@ -1000,10 +987,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
             return self._ir.IntegerType.get_signless(1)
         if dtype_name == "bfloat16":
             return self._ir.BF16Type.get()
-        if dtype_name == "float8_e4m3fn":
-            return self._ir.Float8E4M3FNType.get()
-        if dtype_name == "float8_e5m2":
-            return self._ir.Float8E5M2Type.get()
         if dtype_name == "float16":
             return self._ir.F16Type.get()
         if dtype_name == "float32":
@@ -1120,14 +1103,7 @@ class TileLangIRTranslator(PyStmtExprVisitor):
     # Handle different TIRX node types; the override method names are fixed
     # The following methods are dispatched by visit_stmt.
     def visit_sblock_realize_(self, op: tirx.SBlockRealize) -> None:
-        if isinstance(op.predicate, tirx.IntImm) and int(op.predicate.value):
-            self.visit_stmt(op.block)
-            return
-        cond = self._get_or_create_expr_value(op.predicate)
-        guard = self._scf.IfOp(cond)
-        with self._ir.InsertionPoint(guard.then_block), self._scoped_value_map():
-            self.visit_stmt(op.block)
-            self._scf.YieldOp([])
+        self.visit_stmt(op.block)
 
     def visit_sblock_(self, op: tirx.SBlock) -> None:
         name = str(getattr(op, "name_hint", "") or "")
@@ -1594,30 +1570,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
             lhs, rhs = self._unify_integer_operands(lhs, rhs)
         name = float_op if is_float else integer_op
         return getattr(self._arith, name)(lhs, rhs).result
-
-    def visit_cast_(self, op: tirx.Cast) -> None:
-        value = self._get_or_create_expr_value(op.value)
-        target = self._dtype_type(op.dtype)
-        if value.type == target:
-            result = value
-        elif (
-            isinstance(value.type, (self._ir.IndexType, self._ir.IntegerType))
-            and isinstance(target, self._ir.IntegerType)
-            and target.width == 1
-        ):
-            zero = self._arith.ConstantOp(value.type, self._ir.IntegerAttr.get(value.type, 0)).result
-            result = self._arith.CmpIOp(self._arith.CmpIPredicate.ne, value, zero).result
-        elif isinstance(value.type, self._ir.IndexType) and isinstance(target, self._ir.IntegerType):
-            result = self._arith.IndexCastOp(target, value).result
-        elif isinstance(value.type, self._ir.IntegerType) and isinstance(target, self._ir.IntegerType):
-            if target.width < value.type.width:
-                result = self._arith.TruncIOp(target, value).result
-            else:
-                cast = self._arith.ExtUIOp if str(op.value.dtype).startswith(("uint", "bool")) else self._arith.ExtSIOp
-                result = cast(target, value).result
-        else:
-            raise NotImplementedError(f"Unsupported TileLangIR scalar cast: {value.type} to {target}")
-        self._insert_value(op, result)
 
     def visit_add_(self, op: tirx.Add) -> None:
         lhs = self._get_or_create_expr_value(op.a)
