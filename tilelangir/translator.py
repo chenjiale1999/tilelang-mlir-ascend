@@ -952,11 +952,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
 
     def _memory_scope(self, buffer: Any) -> Any:
         scope = str(buffer.scope())
-        # Preserve explicit storage intent without overloading the legacy
-        # integer spaces (shared=1, logical fragment=2). AS resolves these
-        # names before DMA/GEMM lowering, independently of use-site inference.
-        if scope in ("shared.ub", "shared.l1", "shared.l0a", "shared.l0b", "shared.l0c"):
-            return self._ir.StringAttr.get(scope)
         if scope in ("", "global"):
             address_space = 0
         elif scope in ("shared", "shared.dyn"):
@@ -1149,9 +1144,6 @@ class TileLangIRTranslator(PyStmtExprVisitor):
         for buffer in op.alloc_buffers:
             self._emit_alloc_buffer(buffer)
         self.visit_stmt(op.body)
-
-    def visit_bind_(self, op: tirx.Bind) -> None:
-        self._insert_value(op.var, self._get_or_create_expr_value(op.value))
 
     def visit_for_(self, op: tirx.For) -> None:
         parallel_rank = self._simt_parallel_rank(op)
